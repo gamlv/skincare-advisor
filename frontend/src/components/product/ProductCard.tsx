@@ -3,14 +3,15 @@
 import { useState } from "react"
 import { Badge, categoryColor } from "../ui/Badge"
 import { ProductDetail } from "./ProductDetail"
-import type { Product } from "../../types"
+import type { Product, ProductCreate } from "../../types"
 
 interface ProductCardProps {
   product: Product
   onDelete: (id: string) => void
+  onEdit: (id: string, data: ProductCreate) => Promise<unknown>
 }
 
-export function ProductCard({ product, onDelete }: ProductCardProps) {
+export function ProductCard({ product, onDelete, onEdit }: ProductCardProps) {
   const [showDetail, setShowDetail] = useState(false)
 
   return (
@@ -50,6 +51,7 @@ export function ProductCard({ product, onDelete }: ProductCardProps) {
           product={product}
           onClose={() => setShowDetail(false)}
           onDelete={onDelete}
+          onEdit={onEdit}
         />
       )}
     </>

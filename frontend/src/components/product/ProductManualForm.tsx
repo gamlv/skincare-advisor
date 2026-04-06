@@ -7,6 +7,9 @@ import type { ProductCategory, ProductCreate, SkinConcern } from "../../types"
 
 interface ProductManualFormProps {
   onSubmit: (data: ProductCreate) => void
+  onCancel?: () => void
+  initialValues?: Partial<ProductCreate>
+  submitLabel?: string
 }
 
 const INITIAL_FORM: ProductCreate = {
@@ -17,8 +20,8 @@ const INITIAL_FORM: ProductCreate = {
   concerns: [],
 }
 
-export function ProductManualForm({ onSubmit }: ProductManualFormProps) {
-  const [form, setForm] = useState<ProductCreate>(INITIAL_FORM)
+export function ProductManualForm({ onSubmit, onCancel, initialValues, submitLabel = "登録する" }: ProductManualFormProps) {
+  const [form, setForm] = useState<ProductCreate>({ ...INITIAL_FORM, ...initialValues })
   const [ingredientInput, setIngredientInput] = useState("")
 
   const update = (field: keyof ProductCreate, value: unknown) =>
@@ -144,14 +147,25 @@ export function ProductManualForm({ onSubmit }: ProductManualFormProps) {
         </div>
       </div>
 
-      <Button
-        onClick={() => onSubmit(form)}
-        disabled={!form.name.trim() || !form.brand.trim()}
-        fullWidth
-        className="mt-2"
-      >
-        登録する
-      </Button>
+      <div className="flex gap-2 mt-2">
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 rounded-xl border border-gray-200 py-3 text-sm font-medium text-gray-500 hover:bg-gray-50 transition-colors"
+          >
+            キャンセル
+          </button>
+        )}
+        <Button
+          onClick={() => onSubmit(form)}
+          disabled={!form.name.trim() || !form.brand.trim()}
+          fullWidth={!onCancel}
+          className={onCancel ? "flex-[2]" : ""}
+        >
+          {submitLabel}
+        </Button>
+      </div>
     </div>
   )
 }

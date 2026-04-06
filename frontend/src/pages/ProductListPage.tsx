@@ -14,7 +14,7 @@ interface ProductListPageProps {
 }
 
 export function ProductListPage({ onGoToAdd }: ProductListPageProps) {
-  const { products, loading, error, reload, removeProduct } = useProducts()
+  const { products, loading, error, reload, editProduct, removeProduct } = useProducts()
   const [activeCategory, setActiveCategory] = useState<ProductCategory | "すべて">("すべて")
 
   const filtered =
@@ -74,6 +74,7 @@ export function ProductListPage({ onGoToAdd }: ProductListPageProps) {
                 key={product.id}
                 product={product}
                 onDelete={removeProduct}
+                onEdit={editProduct}
               />
             ))}
           </div>

@@ -47,6 +47,15 @@ def get_product(product_id: str):
     return product
 
 
+@router.put("/{product_id}", response_model=Product)
+def update_product(product_id: str, data: ProductCreate):
+    """IDで製品情報を更新する"""
+    updated = product_store.update_product(product_id, data)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="製品が見つかりません")
+    return updated
+
+
 @router.delete("/{product_id}", status_code=204)
 def delete_product(product_id: str):
     """IDで製品を削除する"""

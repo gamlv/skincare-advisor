@@ -5,6 +5,7 @@ import {
   createProduct as apiCreate,
   deleteProduct as apiDelete,
   fetchProducts,
+  updateProduct as apiUpdate,
 } from "../api/products"
 import type { Product, ProductCreate } from "../types"
 
@@ -36,10 +37,16 @@ export function useProducts() {
     return product
   }, [])
 
+  const editProduct = useCallback(async (id: string, data: ProductCreate) => {
+    const updated = await apiUpdate(id, data)
+    setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)))
+    return updated
+  }, [])
+
   const removeProduct = useCallback(async (id: string) => {
     await apiDelete(id)
     setProducts((prev) => prev.filter((p) => p.id !== id))
   }, [])
 
-  return { products, loading, error, reload: load, addProduct, removeProduct }
+  return { products, loading, error, reload: load, addProduct, editProduct, removeProduct }
 }

@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from models import Product
+from models import Product, ProductCreate
 
 # データファイルのパス（リポジトリルートからの相対パス）
 _DATA_FILE = Path(__file__).parent.parent / "data" / "products.json"
@@ -41,6 +41,19 @@ def save_product(product: Product) -> None:
     all_products = _read_all()
     all_products.append(product.model_dump())
     _write_all(all_products)
+
+
+def update_product(product_id: str, data: ProductCreate) -> Product | None:
+    """IDで製品を更新する（見つからなければNoneを返す）"""
+    all_products = _read_all()
+    for i, p in enumerate(all_products):
+        if p["id"] == product_id:
+            # id と created_at はそのまま保持し、他フィールドを上書き
+            updated = {**p, **data.model_dump()}
+            all_products[i] = updated
+            _write_all(all_products)
+            return Product(**updated)
+    return None
 
 
 def delete_product(product_id: str) -> bool:

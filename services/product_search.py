@@ -1,102 +1,103 @@
-"""Claude API の web_search を使った製品情報検索サービス"""
+"""DuckDuckGo検索 + Claude Haiku による製品情報抽出サービス"""
 
 import json
 import os
 import anthropic
+from ddgs import DDGS
 from fastapi import HTTPException
-
-# Claudeへの指示：部分情報でも返す・複数クエリで検索する
-_SYSTEM_PROMPT = """\
-あなたはスキンケア製品の専門家です。
-ユーザーが指定した製品をWeb検索し、以下の情報をJSON形式で返してください。
-
-【重要なルール】
-- 製品の存在が確認できたら必ず found: true を返す（成分情報が不完全でもOK）
-- 検索クエリは複数試すこと（日本語名・英語名・ブランド名の組み合わせなど）
-- 成分リストが取得できなかった場合は ingredients を空リスト [] にして found: true を返す
-- found: false は「その製品が存在しないことが確認できた場合」のみ使う
-
-返却するJSONのフォーマット：
-{
-  "name": "商品名（正式名称）",
-  "brand": "ブランド名",
-  "category": "洗顔 | 化粧水 | 美容液 | 乳液 | クリーム | 日焼け止め | その他",
-  "ingredients": ["成分1", "成分2", ...],
-  "concerns": ["乾燥" | "ニキビ" | "毛穴" | "シミ" | "敏感肌" | "くすみ" | "ハリ不足"],
-  "found": true
-}
-
-成分は日本語の正式名称で記載してください。
-JSONのみを返し、説明文は不要です。
-"""
 
 
 def search_product_info(query: str) -> dict:
-    """製品名でWeb検索し、成分などの情報を取得して返す。
-    部分情報しか取れない場合でも found: true で返し、ユーザーが編集できるようにする。
-    """
+    """DuckDuckGoで検索し、Claude HaikuにJSONを抽出させて返す。"""
+    # Step1: DuckDuckGo で検索（無料・API不要）
+    snippets = _ddg_search(query)
+    if not snippets:
+        return {"found": False, "name": "", "brand": "", "category": "その他",
+                "ingredients": [], "concerns": []}
+
+    # Step2: Haiku にスニペットを渡してJSON抽出
+    return _extract_with_haiku(query, snippets)
+
+
+def _ddg_search(query: str) -> str:
+    """DuckDuckGoで製品名を検索し、上位結果のスニペットをまとめて返す。"""
+    search_queries = [
+        f"{query} スキンケア 成分",
+        f"{query} skincare ingredients",
+    ]
+    results = []
+    try:
+        with DDGS() as ddgs:
+            for q in search_queries:
+                for r in ddgs.text(q, max_results=3):
+                    results.append(f"【{r['title']}】\n{r['body']}")
+                    if len(results) >= 5:
+                        break
+                if len(results) >= 5:
+                    break
+    except Exception:
+        return ""
+
+    return "\n\n".join(results)
+
+
+def _extract_with_haiku(query: str, snippets: str) -> dict:
+    """検索スニペットを Haiku に渡して製品情報を JSON で抽出する。"""
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-    user_message = (
-        f"次のスキンケア製品を検索してください：{query}\n\n"
-        f"見つからない場合は「{query} スキンケア 成分」「{query} skincare ingredients」など"
-        f"複数のクエリで検索してください。"
-        f"製品の存在が確認できたら、成分情報が不完全でも found: true で返してください。"
-    )
+    prompt = f"""\
+以下は「{query}」に関するWeb検索結果です。この情報から製品情報をJSON形式で抽出してください。
 
-    messages = [{"role": "user", "content": user_message}]
+【検索結果】
+{snippets}
+
+以下のJSON形式のみで返してください（説明文不要）:
+{{
+  "found": true,
+  "name": "正式な製品名",
+  "brand": "ブランド名",
+  "category": "洗顔 | 化粧水 | 美容液 | 乳液 | クリーム | 日焼け止め | その他",
+  "ingredients": ["成分1", "成分2"],
+  "concerns": ["乾燥" | "ニキビ" | "毛穴" | "シミ" | "敏感肌" | "くすみ" | "ハリ不足"]
+}}
+
+製品情報が読み取れない場合: {{"found": false}}
+成分が不明な場合は ingredients を [] にして found: true を返す。"""
 
     try:
-        while True:
-            response = client.messages.create(
-                model="claude-opus-4-6",
-                max_tokens=2048,
-                system=_SYSTEM_PROMPT,
-                tools=[{"type": "web_search_20260209", "name": "web_search"}],
-                messages=messages,
-            )
-
-            if response.stop_reason == "pause_turn":
-                messages.append({"role": "assistant", "content": response.content})
-                continue
-
-            break
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
     except anthropic.AuthenticationError:
         raise HTTPException(status_code=503, detail="APIキーが無効です")
-    except anthropic.BadRequestError as e:
-        raise HTTPException(status_code=503, detail=f"Claude APIエラー：{e.message}")
     except anthropic.RateLimitError:
         raise HTTPException(status_code=429, detail="APIのレート制限に達しました。しばらく待ってから再試行してください")
 
-    return _extract_json_from_response(response)
+    text = "".join(b.text for b in response.content if b.type == "text")
+    return _parse_json(text)
 
 
-def _extract_json_from_response(response: anthropic.types.Message) -> dict:
-    """全textブロックを走査してJSONが含まれるブロックを返す。"""
-    text_blocks = [b.text for b in response.content if b.type == "text"]
+def _parse_json(text: str) -> dict:
+    """レスポンスからJSONを取り出す。コードブロックも考慮。"""
+    # コードブロック除去
+    if "```" in text:
+        parts = text.split("```")
+        if len(parts) >= 2:
+            text = parts[1]
+            if text.startswith("json"):
+                text = text[4:]
 
-    for text in text_blocks:
-        candidate = _strip_code_block(text)
-        if not candidate.strip().startswith("{"):
-            continue
+    text = text.strip()
+    # { ... } の範囲だけ抜き出してパース（配列・余分なテキスト対策）
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start != -1 and end > start:
         try:
-            result = json.loads(candidate.strip())
-            return result
+            return json.loads(text[start:end])
         except json.JSONDecodeError:
-            continue
+            pass
 
-return {"found": False, "name": "", "brand": "", "category": "その他",
+    return {"found": False, "name": "", "brand": "", "category": "その他",
             "ingredients": [], "concerns": []}
-
-
-def _strip_code_block(text: str) -> str:
-    """```json ... ``` または ``` ... ``` を取り除いてコードだけ返す。"""
-    if "```" not in text:
-        return text
-    parts = text.split("```")
-    if len(parts) < 2:
-        return text
-    code = parts[1]
-    if code.startswith("json"):
-        code = code[4:]
-    return code
