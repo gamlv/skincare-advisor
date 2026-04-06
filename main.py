@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import products
+from routers import products, routine
 
 # .envファイルから環境変数を読み込む
 load_dotenv()
@@ -19,6 +19,7 @@ app.add_middleware(
 
 # ルーターを登録
 app.include_router(products.router)
+app.include_router(routine.router)
 
 
 @app.get("/")

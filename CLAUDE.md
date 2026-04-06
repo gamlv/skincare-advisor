@@ -44,9 +44,9 @@ routers/
 
 services/
   product_store.py           # data/products.jsonへの読み書き
-  ingredient_checker.py      # 成分正規化・NGペア検出（未実装）
-  product_search.py          # Claude API web_search連携（未実装）
-  routine_suggester.py       # Claude APIルーティン提案（未実装）
+  ingredient_checker.py      # 成分正規化・NGペア検出 ✅
+  product_search.py          # Claude API web_search連携 ✅
+  routine_suggester.py       # Claude API ルーティン提案 ✅
 
 data/
   products.json              # 製品データ（JSONファイルで永続化）
@@ -73,10 +73,10 @@ class Product(BaseModel):
 ## 実装機能
 
 - **製品登録・一覧・詳細・削除**：`routers/products.py`（実装済み）
-- **製品検索**：製品名でWeb検索して情報を自動取得（Claude API + web_search）（未実装）
-- **気分選択**：リフレッシュ・リラックス・しっかりケア・時短・肌荒れの5種類（未実装）
-- **ルーティン提案**：気分に合わせてClaude APIが最適な組み合わせを提案（未実装）
-- **成分相性チェック**：NGな組み合わせを自動検出して除外（未実装）
+- **製品検索**：製品名でWeb検索して情報を自動取得（Claude API + web_search） ✅（`services/product_search.py`）
+- **気分選択**：リフレッシュ・リラックス・しっかりケア・時短・肌荒れの5種類 ✅
+- **ルーティン提案**：気分に合わせてClaude APIが最適な組み合わせを提案 ✅（`services/routine_suggester.py`）
+- **成分相性チェック**：NGな組み合わせを自動検出して除外 ✅（`services/ingredient_checker.py`）
 
 ## 成分NGペアのルール（必ず守ること）
 

@@ -1,11 +1,27 @@
-"""製品管理エンドポイント（登録・一覧・詳細・削除）"""
+"""製品管理エンドポイント（登録・一覧・詳細・削除・検索）"""
 
 import uuid
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from models import Product, ProductCreate
 from services import product_store
+from services import product_search
 
 router = APIRouter(prefix="/products", tags=["製品管理"])
+
+
+class ProductSearchRequest(BaseModel):
+    query: str  # 検索する製品名
+
+
+class ProductSearchResponse(BaseModel):
+    """検索結果（ユーザーが確認後に /products POST で登録する）"""
+    found: bool
+    name: str = ""
+    brand: str = ""
+    category: str = "その他"
+    ingredients: list[str] = []
+    concerns: list[str] = []
 
 
 @router.get("", response_model=list[Product])
@@ -37,3 +53,13 @@ def delete_product(product_id: str):
     was_deleted = product_store.delete_product(product_id)
     if not was_deleted:
         raise HTTPException(status_code=404, detail="製品が見つかりません")
+
+
+@router.post("/search", response_model=ProductSearchResponse)
+def search_product(request: ProductSearchRequest):
+    """製品名でWeb検索して情報を取得する（登録はしない）"""
+    if not request.query.strip():
+        raise HTTPException(status_code=400, detail="検索ワードを入力してください")
+
+    result = product_search.search_product_info(request.query)
+    return ProductSearchResponse(**result)
