@@ -1,13 +1,15 @@
-// 製品追加ページ（検索 → 確認・編集 → 登録）
+// 製品追加ページ（検索 → 候補選択 → 詳細取得 → 確認・編集 → 登録）
 
 import { useState } from "react"
 import { ProductSearchForm } from "../components/product/ProductSearchForm"
+import { ProductCandidateList } from "../components/product/ProductCandidateList"
 import { ProductConfirmForm } from "../components/product/ProductConfirmForm"
 import { ProductManualForm } from "../components/product/ProductManualForm"
 import { ErrorMessage } from "../components/ui/ErrorMessage"
-import type { ProductCreate, SearchResult } from "../types"
+import { searchProductDetail } from "../api/products"
+import type { ProductCreate, SearchCandidate, SearchResult } from "../types"
 
-type Step = "search" | "confirm" | "manual" | "done"
+type Step = "search" | "candidates" | "confirm" | "manual" | "done"
 
 interface AddProductPageProps {
   onAdded: (data: ProductCreate) => Promise<void>
@@ -15,13 +17,45 @@ interface AddProductPageProps {
 
 export function AddProductPage({ onAdded }: AddProductPageProps) {
   const [step, setStep] = useState<Step>("search")
+  const [candidates, setCandidates] = useState<SearchCandidate[]>([])
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastAdded, setLastAdded] = useState<string | null>(null)
 
-  const handleSearchResult = (result: SearchResult) => {
-    setSearchResult(result)
-    setStep("confirm")
+  // 候補リストを受け取る
+  const handleCandidates = (results: SearchCandidate[]) => {
+    setCandidates(results)
+    setStep("candidates")
+  }
+
+  // 候補を選択 → 詳細検索
+  const handleSelectCandidate = async (candidate: SearchCandidate) => {
+    setDetailLoading(true)
+    setError(null)
+    try {
+      const detailQuery = `${candidate.brand} ${candidate.name}`
+      const result = await searchProductDetail(detailQuery)
+      if (result.found) {
+        setSearchResult(result)
+        setStep("confirm")
+      } else {
+        // 詳細が取れなかった場合は候補の情報でフォームを開く
+        setSearchResult({
+          found: true,
+          name: candidate.name,
+          brand: candidate.brand,
+          category: candidate.category,
+          ingredients: [],
+          concerns: [],
+        })
+        setStep("confirm")
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "詳細情報の取得に失敗しました")
+    } finally {
+      setDetailLoading(false)
+    }
   }
 
   const handleConfirmSubmit = async (data: SearchResult) => {
@@ -48,6 +82,7 @@ export function AddProductPage({ onAdded }: AddProductPageProps) {
 
   const reset = () => {
     setStep("search")
+    setCandidates([])
     setSearchResult(null)
     setError(null)
     setLastAdded(null)
@@ -72,12 +107,10 @@ export function AddProductPage({ onAdded }: AddProductPageProps) {
         </div>
       )}
 
-      {/* 検索フォーム（最初に表示） */}
+      {/* 検索フォーム */}
       {step === "search" && (
         <div className="flex flex-col gap-4">
-          <ProductSearchForm onResult={handleSearchResult} />
-
-          {/* 手入力への切り替え */}
+          <ProductSearchForm onCandidates={handleCandidates} />
           <div className="text-center">
             <button
               onClick={() => setStep("manual")}
@@ -89,6 +122,19 @@ export function AddProductPage({ onAdded }: AddProductPageProps) {
         </div>
       )}
 
+      {/* 候補リスト */}
+      {step === "candidates" && (
+        <div>
+          {error && <div className="mb-4"><ErrorMessage message={error} /></div>}
+          <ProductCandidateList
+            candidates={candidates}
+            loading={detailLoading}
+            onSelect={handleSelectCandidate}
+            onBack={() => setStep("search")}
+          />
+        </div>
+      )}
+
       {/* 確認・編集フォーム */}
       {step === "confirm" && searchResult && (
         <div>
@@ -96,7 +142,7 @@ export function AddProductPage({ onAdded }: AddProductPageProps) {
           <ProductConfirmForm
             initialData={searchResult}
             onSubmit={handleConfirmSubmit}
-            onBack={() => setStep("search")}
+            onBack={() => setStep("candidates")}
           />
         </div>
       )}

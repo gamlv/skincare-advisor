@@ -1,16 +1,16 @@
-// 製品名でWeb検索するフォーム（Claude APIを使うため時間がかかる）
+// 製品検索フォーム（あいまい検索 → 候補リスト表示）
 
 import { useState } from "react"
-import { searchProduct } from "../../api/products"
+import { searchCandidates } from "../../api/products"
 import { Button } from "../ui/Button"
 import { ErrorMessage } from "../ui/ErrorMessage"
-import type { SearchResult } from "../../types"
+import type { SearchCandidate } from "../../types"
 
 interface ProductSearchFormProps {
-  onResult: (result: SearchResult) => void
+  onCandidates: (candidates: SearchCandidate[]) => void
 }
 
-export function ProductSearchForm({ onResult }: ProductSearchFormProps) {
+export function ProductSearchForm({ onCandidates }: ProductSearchFormProps) {
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -22,11 +22,11 @@ export function ProductSearchForm({ onResult }: ProductSearchFormProps) {
     setError(null)
     setNotFound(false)
     try {
-      const result = await searchProduct(query.trim())
-      if (!result.found) {
+      const candidates = await searchCandidates(query.trim())
+      if (candidates.length === 0) {
         setNotFound(true)
       } else {
-        onResult(result)
+        onCandidates(candidates)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "検索に失敗しました")
@@ -46,7 +46,7 @@ export function ProductSearchForm({ onResult }: ProductSearchFormProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          placeholder="例：シカクリーム Dr.Jart+"
+          placeholder="例：ハトムギ化粧水、SK-II、メラノCC"
           disabled={loading}
           className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm placeholder-gray-400 focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100 disabled:bg-gray-50"
         />
@@ -55,8 +55,7 @@ export function ProductSearchForm({ onResult }: ProductSearchFormProps) {
       {loading && (
         <div className="rounded-xl bg-pink-50 p-4 text-center">
           <div className="mx-auto mb-2 h-6 w-6 animate-spin rounded-full border-2 border-pink-200 border-t-pink-500" />
-          <p className="text-sm text-pink-600">Webを検索中...</p>
-          <p className="mt-1 text-xs text-pink-400">成分情報の取得に30〜60秒かかる場合があります</p>
+          <p className="text-sm text-pink-600">製品候補を検索中...</p>
         </div>
       )}
 

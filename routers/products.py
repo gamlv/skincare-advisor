@@ -14,8 +14,16 @@ class ProductSearchRequest(BaseModel):
     query: str  # 検索する製品名
 
 
+class SearchCandidateResponse(BaseModel):
+    """候補検索の結果"""
+    name: str
+    brand: str
+    category: str = "その他"
+    description: str = ""
+
+
 class ProductSearchResponse(BaseModel):
-    """検索結果（ユーザーが確認後に /products POST で登録する）"""
+    """詳細検索の結果（ユーザーが確認後に /products POST で登録する）"""
     found: bool
     name: str = ""
     brand: str = ""
@@ -64,9 +72,19 @@ def delete_product(product_id: str):
         raise HTTPException(status_code=404, detail="製品が見つかりません")
 
 
+@router.post("/search/candidates", response_model=list[SearchCandidateResponse])
+def search_candidates(request: ProductSearchRequest):
+    """あいまい検索で候補製品を複数返す（軽量・高速）"""
+    if not request.query.strip():
+        raise HTTPException(status_code=400, detail="検索ワードを入力してください")
+
+    candidates = product_search.search_candidates(request.query)
+    return [SearchCandidateResponse(**c) for c in candidates]
+
+
 @router.post("/search", response_model=ProductSearchResponse)
 def search_product(request: ProductSearchRequest):
-    """製品名でWeb検索して情報を取得する（登録はしない）"""
+    """特定の製品名で詳細検索（成分情報を含む）"""
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="検索ワードを入力してください")
 

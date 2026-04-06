@@ -58,6 +58,13 @@ export interface ProductCreate {
   concerns: SkinConcern[];
 }
 
+export interface SearchCandidate {
+  name: string;
+  brand: string;
+  category: ProductCategory;
+  description: string;
+}
+
 export interface SearchResult {
   found: boolean;
   name: string;
