@@ -60,7 +60,7 @@ models.py                    # PydanticモデルとDB定数（ProductCreate, Pro
 .env.example                 # 環境変数テンプレート
 routers/
   products.py                # 製品CRUD エンドポイント ✅
-  routine.py                 # ルーティン提案エンドポイント（未実装）
+  routine.py                 # ルーティン提案エンドポイント ✅
 services/
   product_store.py           # data/products.json への読み書き ✅
   ingredient_checker.py      # 成分正規化・NGペア検出 ✅
