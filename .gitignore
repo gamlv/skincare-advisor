@@ -14,3 +14,10 @@ wheels/
 
 # データファイル
 data/*.json
+
+# フロントエンド
+frontend/node_modules/
+frontend/dist/
+
+# ビルド成果物（npm run build の出力先）
+static/
