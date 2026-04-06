@@ -40,29 +40,60 @@ export function ProductConfirmForm({
     update("concerns", concerns)
   }
 
+  // 取得できなかった項目を検出する
+  const missingFields = [
+    !form.name && "商品名",
+    !form.brand && "ブランド",
+    form.ingredients.length === 0 && "成分",
+    form.concerns.length === 0 && "肌悩み",
+  ].filter(Boolean)
+
   return (
     <div className="flex flex-col gap-5">
-      <div className="rounded-xl bg-green-50 p-3 text-center">
-        <p className="text-sm text-green-700">製品情報を取得しました。内容を確認して登録してください。</p>
-      </div>
+      {/* 取得状況バナー */}
+      {missingFields.length === 0 ? (
+        <div className="rounded-xl bg-green-50 p-3 text-center">
+          <p className="text-sm text-green-700">製品情報を取得しました。内容を確認して登録してください。</p>
+        </div>
+      ) : (
+        <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
+          <p className="text-sm font-medium text-amber-800">一部の情報を取得できませんでした</p>
+          <p className="mt-0.5 text-xs text-amber-600">
+            取得できなかった項目：{missingFields.join("・")}
+          </p>
+          <p className="mt-1 text-xs text-amber-500">空欄を手入力して登録してください</p>
+        </div>
+      )}
 
       {/* 商品名 */}
       <div>
-        <label className="mb-1.5 block text-xs font-medium text-gray-500">商品名</label>
+        <label className="mb-1.5 block text-xs font-medium text-gray-500">
+          商品名 {!form.name && <span className="text-amber-500">（未取得）</span>}
+        </label>
         <input
           value={form.name}
           onChange={(e) => update("name", e.target.value)}
-          className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+          placeholder="商品名を入力してください"
+          className={[
+            "w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-pink-100",
+            !form.name ? "border-amber-300 bg-amber-50 focus:border-pink-400" : "border-gray-200 focus:border-pink-400",
+          ].join(" ")}
         />
       </div>
 
       {/* ブランド */}
       <div>
-        <label className="mb-1.5 block text-xs font-medium text-gray-500">ブランド</label>
+        <label className="mb-1.5 block text-xs font-medium text-gray-500">
+          ブランド {!form.brand && <span className="text-amber-500">（未取得）</span>}
+        </label>
         <input
           value={form.brand}
           onChange={(e) => update("brand", e.target.value)}
-          className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100"
+          placeholder="ブランド名を入力してください"
+          className={[
+            "w-full rounded-xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-pink-100",
+            !form.brand ? "border-amber-300 bg-amber-50 focus:border-pink-400" : "border-gray-200 focus:border-pink-400",
+          ].join(" ")}
         />
       </div>
 
@@ -82,7 +113,9 @@ export function ProductConfirmForm({
 
       {/* 肌悩み */}
       <div>
-        <label className="mb-2 block text-xs font-medium text-gray-500">肌悩み</label>
+        <label className="mb-2 block text-xs font-medium text-gray-500">
+          肌悩み {form.concerns.length === 0 && <span className="text-amber-500">（未取得・選択してください）</span>}
+        </label>
         <div className="flex flex-wrap gap-2">
           {SKIN_CONCERNS.map((concern) => (
             <button
@@ -104,7 +137,9 @@ export function ProductConfirmForm({
 
       {/* 成分 */}
       <div>
-        <label className="mb-1.5 block text-xs font-medium text-gray-500">成分</label>
+        <label className="mb-1.5 block text-xs font-medium text-gray-500">
+          成分 {form.ingredients.length === 0 && <span className="text-amber-500">（未取得・任意で追加）</span>}
+        </label>
         <div className="flex gap-2 mb-2">
           <input
             value={ingredientInput}

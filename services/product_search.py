@@ -5,10 +5,16 @@ import os
 import anthropic
 from fastapi import HTTPException
 
-# Claudeへの指示：日本語で、JSON形式で製品情報を返す
+# Claudeへの指示：部分情報でも返す・複数クエリで検索する
 _SYSTEM_PROMPT = """\
 あなたはスキンケア製品の専門家です。
 ユーザーが指定した製品をWeb検索し、以下の情報をJSON形式で返してください。
+
+【重要なルール】
+- 製品の存在が確認できたら必ず found: true を返す（成分情報が不完全でもOK）
+- 検索クエリは複数試すこと（日本語名・英語名・ブランド名の組み合わせなど）
+- 成分リストが取得できなかった場合は ingredients を空リスト [] にして found: true を返す
+- found: false は「その製品が存在しないことが確認できた場合」のみ使う
 
 返却するJSONのフォーマット：
 {
@@ -20,7 +26,6 @@ _SYSTEM_PROMPT = """\
   "found": true
 }
 
-製品が見つからない場合は found: false として他の項目は空にしてください。
 成分は日本語の正式名称で記載してください。
 JSONのみを返し、説明文は不要です。
 """
@@ -28,18 +33,25 @@ JSONのみを返し、説明文は不要です。
 
 def search_product_info(query: str) -> dict:
     """製品名でWeb検索し、成分などの情報を取得して返す。
+    部分情報しか取れない場合でも found: true で返し、ユーザーが編集できるようにする。
 
     Args:
         query: 検索する製品名（例：「シカクリーム Dr.Jart+」）
 
     Returns:
-        製品情報の辞書。found=Falseの場合は製品が見つからなかった。
+        製品情報の辞書。found=Falseの場合は製品が存在しないことが確認された。
     """
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-    messages = [
-        {"role": "user", "content": f"次のスキンケア製品を検索してください：{query}"}
-    ]
+    # 日本語名・英語名・ブランド名の組み合わせで検索しやすいよう指示を追加
+    user_message = (
+        f"次のスキンケア製品を検索してください：{query}\n\n"
+        f"見つからない場合は「{query} スキンケア 成分」「{query} skincare ingredients」など"
+        f"複数のクエリで検索してください。"
+        f"製品の存在が確認できたら、成分情報が不完全でも found: true で返してください。"
+    )
+
+    messages = [{"role": "user", "content": user_message}]
 
     # web_searchはサーバーサイドツールのため、Claudeが自律的に検索を実行する
     # pause_turnになった場合はメッセージを引き継いでループを続ける

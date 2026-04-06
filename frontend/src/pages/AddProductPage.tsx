@@ -1,4 +1,4 @@
-// 製品追加ページ（検索 or 手入力）
+// 製品追加ページ（検索 → 確認・編集 → 登録）
 
 import { useState } from "react"
 import { ProductSearchForm } from "../components/product/ProductSearchForm"
@@ -7,15 +7,14 @@ import { ProductManualForm } from "../components/product/ProductManualForm"
 import { ErrorMessage } from "../components/ui/ErrorMessage"
 import type { ProductCreate, SearchResult } from "../types"
 
-// 製品追加のステート遷移
-type Step = "select" | "searching" | "confirm" | "manual" | "done"
+type Step = "search" | "confirm" | "manual" | "done"
 
 interface AddProductPageProps {
   onAdded: (data: ProductCreate) => Promise<void>
 }
 
 export function AddProductPage({ onAdded }: AddProductPageProps) {
-  const [step, setStep] = useState<Step>("select")
+  const [step, setStep] = useState<Step>("search")
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lastAdded, setLastAdded] = useState<string | null>(null)
@@ -48,7 +47,7 @@ export function AddProductPage({ onAdded }: AddProductPageProps) {
   }
 
   const reset = () => {
-    setStep("select")
+    setStep("search")
     setSearchResult(null)
     setError(null)
     setLastAdded(null)
@@ -73,47 +72,20 @@ export function AddProductPage({ onAdded }: AddProductPageProps) {
         </div>
       )}
 
-      {/* 方法を選択 */}
-      {step === "select" && (
+      {/* 検索フォーム（最初に表示） */}
+      {step === "search" && (
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-gray-500 text-center mb-2">製品の追加方法を選んでください</p>
-
-          {/* 検索で追加 */}
-          <button
-            onClick={() => setStep("searching")}
-            className="rounded-2xl bg-white border border-gray-100 p-5 text-left shadow-sm hover:shadow-md hover:border-pink-100 transition-all"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-2xl">🔍</span>
-              <p className="font-medium text-gray-900">製品名で検索して追加</p>
-            </div>
-            <p className="text-sm text-gray-500">製品名を入力するとAIが成分情報を自動で取得します</p>
-          </button>
-
-          {/* 手入力で追加 */}
-          <button
-            onClick={() => setStep("manual")}
-            className="rounded-2xl bg-white border border-gray-100 p-5 text-left shadow-sm hover:shadow-md hover:border-pink-100 transition-all"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-2xl">✏️</span>
-              <p className="font-medium text-gray-900">手入力で追加</p>
-            </div>
-            <p className="text-sm text-gray-500">製品情報を自分で入力して登録します</p>
-          </button>
-        </div>
-      )}
-
-      {/* 検索フォーム */}
-      {step === "searching" && (
-        <div>
-          <button
-            onClick={reset}
-            className="mb-4 flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600"
-          >
-            ← 戻る
-          </button>
           <ProductSearchForm onResult={handleSearchResult} />
+
+          {/* 手入力への切り替え */}
+          <div className="text-center">
+            <button
+              onClick={() => setStep("manual")}
+              className="text-sm text-gray-400 underline hover:text-gray-600"
+            >
+              検索せずに手入力で登録する
+            </button>
+          </div>
         </div>
       )}
 
@@ -124,7 +96,7 @@ export function AddProductPage({ onAdded }: AddProductPageProps) {
           <ProductConfirmForm
             initialData={searchResult}
             onSubmit={handleConfirmSubmit}
-            onBack={() => setStep("searching")}
+            onBack={() => setStep("search")}
           />
         </div>
       )}
