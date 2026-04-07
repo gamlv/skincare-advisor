@@ -45,13 +45,18 @@ export function BarcodeScanner({ onScan, onCancel }: BarcodeScannerProps) {
     const s = scanner
 
     // 複数カメラがある端末で適切な背面カメラを選ぶ
-    // facingMode指定だと広角・超広角が選ばれることがあるため、カメラIDで明示的に指定する
     const selectCamera = async (): Promise<string | MediaTrackConstraints> => {
       try {
         const cameras = await Html5Qrcode.getCameras()
         if (cameras.length === 0) return { facingMode: "environment" }
 
-        // 広角・超広角を除いたメイン背面カメラを優先する
+        // iOSは権限取得前にenumerateDevicesを呼ぶとラベルが空になる
+        // ラベルが空のままカメラIDで指定すると意図しないカメラが選ばれるため
+        // facingMode: "environment" にフォールバックして iOS のネイティブ選択に任せる
+        const hasLabels = cameras.some(c => c.label.trim().length > 0)
+        if (!hasLabels) return { facingMode: "environment" }
+
+        // Androidなど: 広角・超広角・マクロを除いたメイン背面カメラを優先する
         const main = cameras.find(c => {
           const label = c.label.toLowerCase()
           return (label.includes("back") || label.includes("rear") || label.includes("背面")) &&

@@ -25,6 +25,10 @@ export const searchCandidates = (query: string) =>
 export const searchProductDetail = (query: string) =>
   post<SearchResult>("/products/search", { query })
 
+// バーコード（JANコード等）でWeb検索して製品情報を取得する（OBFにない製品向け）
+export const searchByBarcode = (barcode: string) =>
+  post<SearchResult>("/products/search/barcode", { barcode })
+
 // Open Beauty Facts APIでJANコードから製品情報を取得する
 export async function lookupByBarcode(barcode: string): Promise<SearchResult | null> {
   const res = await fetch(

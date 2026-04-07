@@ -8,7 +8,7 @@ import { ProductConfirmForm } from "../components/product/ProductConfirmForm"
 import { ProductManualForm } from "../components/product/ProductManualForm"
 import { BarcodeScanner } from "../components/product/BarcodeScanner"
 import { ErrorMessage } from "../components/ui/ErrorMessage"
-import { searchProductDetail, lookupByBarcode } from "../api/products"
+import { searchProductDetail, searchByBarcode, lookupByBarcode } from "../api/products"
 import type { ProductCreate, SearchCandidate, SearchResult } from "../types"
 
 // バーコードスキャナーのクラッシュを白画面ではなくエラーメッセージで表示するバウンダリ
@@ -138,11 +138,18 @@ export function AddProductPage({ onAdded }: AddProductPageProps) {
         })
         setStep("confirm")
       } else {
-        // Open Beauty Factsに未登録 → エラーを表示して検索フォームへ
-        setError(
-          `バーコード「${barcode}」の製品情報がデータベースに見つかりませんでした。製品名で検索してください。`
-        )
-        setStep("search")
+        // Open Beauty Factsに未登録 → バーコードでWeb検索にフォールバック
+        // JANコード・GTINで@cosme・Rakuten・メーカーサイト等を検索（日本・海外製品カバー）
+        const webResult = await searchByBarcode(barcode)
+        if (webResult.found) {
+          setSearchResult(webResult)
+          setStep("confirm")
+        } else {
+          setError(
+            `バーコード「${barcode}」の製品情報が見つかりませんでした。製品名で検索してください。`
+          )
+          setStep("search")
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "製品情報の取得に失敗しました")

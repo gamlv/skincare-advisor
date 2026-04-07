@@ -40,8 +40,33 @@ def search_candidates(query: str) -> list[dict]:
 
 def search_product_info(query: str) -> dict:
     """特定の製品名で詳細検索。ページ本文まで取得して成分を抽出する。"""
+    queries = [
+        f"{query} 全成分",
+        f"{query} @cosme 成分",
+        f"{query} 口コミ 特徴",
+        f"{query} ingredients",
+        f"{query} スキンケア レビュー",
+    ]
+    return _run_search(query, queries)
+
+
+def search_product_by_barcode(barcode: str) -> dict:
+    """バーコード（JANコード・GTINなど）からWeb検索で製品情報を取得する。
+    Open Beauty Factsにない日本・海外製品もカバーする。"""
+    queries = [
+        f"{barcode} スキンケア 全成分",
+        f"{barcode} 化粧品 成分表",
+        f'"{barcode}" cosmetics ingredients',
+        f"JAN {barcode} beauty skincare",
+        f"{barcode} @cosme",
+    ]
+    return _run_search(f"バーコード {barcode} の製品", queries)
+
+
+def _run_search(label: str, queries: list[str]) -> dict:
+    """指定クエリでDuckDuckGo検索 → ページ取得 → Haikuで抽出する共通処理。"""
     # Step1: DuckDuckGo で多角的に検索
-    urls_and_snippets = _ddg_multi_search(query)
+    urls_and_snippets = _ddg_search(queries)
     if not urls_and_snippets:
         return {**_NOT_FOUND}
 
@@ -53,20 +78,25 @@ def search_product_info(query: str) -> dict:
     if not combined.strip():
         return {**_NOT_FOUND}
 
-    return _extract_with_haiku(query, combined)
+    return _extract_with_haiku(label, combined)
 
 
 # ── Step1: 多角的な検索 ──
 
 def _ddg_multi_search(query: str) -> list[dict]:
-    """複数の検索クエリで DuckDuckGo を叩き、URL・タイトル・スニペットを集める。"""
-    search_queries = [
+    """製品名検索用クエリを組み立てて DuckDuckGo を叩く。"""
+    queries = [
         f"{query} 全成分",
         f"{query} @cosme 成分",
         f"{query} 口コミ 特徴",
         f"{query} ingredients",
         f"{query} スキンケア レビュー",
     ]
+    return _ddg_search(queries)
+
+
+def _ddg_search(search_queries: list[str]) -> list[dict]:
+    """複数の検索クエリで DuckDuckGo を叩き、URL・タイトル・スニペットを集める。"""
 
     seen_urls: set[str] = set()
     results: list[dict] = []

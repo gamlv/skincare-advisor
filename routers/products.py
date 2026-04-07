@@ -14,6 +14,10 @@ class ProductSearchRequest(BaseModel):
     query: str  # 検索する製品名
 
 
+class BarcodeSearchRequest(BaseModel):
+    barcode: str  # JANコード・GTINなど
+
+
 class SearchCandidateResponse(BaseModel):
     """候補検索の結果"""
     name: str
@@ -89,4 +93,15 @@ def search_product(request: ProductSearchRequest):
         raise HTTPException(status_code=400, detail="検索ワードを入力してください")
 
     result = product_search.search_product_info(request.query)
+    return ProductSearchResponse(**result)
+
+
+@router.post("/search/barcode", response_model=ProductSearchResponse)
+def search_product_by_barcode(request: BarcodeSearchRequest):
+    """バーコード（JANコード等）でWeb検索して製品情報を取得する。
+    Open Beauty Factsにない日本・海外製品もカバーする。"""
+    if not request.barcode.strip():
+        raise HTTPException(status_code=400, detail="バーコードを入力してください")
+
+    result = product_search.search_product_by_barcode(request.barcode)
     return ProductSearchResponse(**result)
