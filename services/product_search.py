@@ -43,6 +43,7 @@ def search_product_info(query: str) -> dict:
     queries = [
         f"{query} 全成分",
         f"{query} @cosme 成分",
+        f"{query} site:qoo10.jp",
         f"{query} 口コミ 特徴",
         f"{query} ingredients",
         f"{query} スキンケア レビュー",
@@ -58,22 +59,19 @@ def search_product_by_barcode(barcode: str) -> dict:
         f"{barcode} 化粧品 成分表",
         f'"{barcode}" cosmetics ingredients',
         f"JAN {barcode} beauty skincare",
+        f"{barcode} site:qoo10.jp",
         f"{barcode} @cosme",
     ]
     return _run_search(f"バーコード {barcode} の製品", queries)
 
 
 def _run_search(label: str, queries: list[str]) -> dict:
-    """指定クエリでDuckDuckGo検索 → ページ取得 → Haikuで抽出する共通処理。"""
-    # Step1: DuckDuckGo で多角的に検索
+    """DuckDuckGo検索 → ページ取得 → Haikuで抽出する共通処理。"""
     urls_and_snippets = _ddg_search(queries)
     if not urls_and_snippets:
         return {**_NOT_FOUND}
 
-    # Step2: 上位ページの本文を取得
     page_texts = _fetch_pages(urls_and_snippets)
-
-    # Step3: スニペット + ページ本文をまとめて Haiku に渡す
     combined = _build_context(urls_and_snippets, page_texts)
     if not combined.strip():
         return {**_NOT_FOUND}
