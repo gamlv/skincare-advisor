@@ -43,25 +43,25 @@ JSONのみを返し、説明文やコードブロックは不要です。
 """
 
 
-def suggest_routine(products: list[Product], mood: str, weather: dict | None = None) -> dict:
+def suggest_routine(products: list[Product], moods: list[str], weather: dict | None = None) -> dict:
     """気分・天気に合わせて製品リストからルーティンを提案する。
 
     Args:
         products: 対象の製品リスト
-        mood: 気分モードのキー（refresh / relax / thorough / quick / sensitive /
-              morning / night / brightening / antiaging / pore）
+        moods: 気分モードのキーリスト（1〜3件）
         weather: 天気コンテキスト（temperature, humidity, uv_index, weather_label, pollen）
 
     Returns:
         {
-            "mood": "refresh",
-            "mood_label": "リフレッシュ",
+            "moods": ["morning", "quick"],
+            "mood_label": "朝ケア + 時短",
             "steps": [{"order": 1, "product_name": ..., "instructions": ...}],
             "notes": "...",
             "warnings": [{"product_a": ..., "product_b": ..., "ng_pairs": [...]}]
         }
     """
-    mood_def = _MOOD_DEFINITIONS.get(mood, _MOOD_DEFINITIONS["thorough"])
+    mood_defs = [_MOOD_DEFINITIONS.get(m, _MOOD_DEFINITIONS["thorough"]) for m in moods]
+    mood_label = " + ".join(d["label"] for d in mood_defs)
 
     # NGペアを先に検出して警告リストを作る
     warnings = check_routine_compatibility(products)
@@ -75,9 +75,18 @@ def suggest_routine(products: list[Product], mood: str, weather: dict | None = N
     # 天気情報を追加（取得できている場合のみ）
     weather_note = f"\n\n{_format_weather_for_prompt(weather)}" if weather else ""
 
+    # 複数気分の提案方針を箇条書きで列挙する
+    policy_lines = "\n".join(f"- {d['policy']}" for d in mood_defs)
+    policy_note = (
+        f"提案方針：{policy_lines}\n"
+        "※ 上記すべての方針を考慮してバランスよく製品を選んでください。"
+        if len(mood_defs) > 1
+        else f"提案方針：{mood_defs[0]['policy']}"
+    )
+
     user_message = (
-        f"今日の気分：{mood_def['label']}\n"
-        f"提案方針：{mood_def['policy']}"
+        f"今日の気分：{mood_label}\n"
+        f"{policy_note}"
         f"{weather_note}\n\n"
         f"【登録製品】\n{product_list_text}\n\n"
         f"【成分チェック結果】\n{ng_note}"
@@ -102,8 +111,8 @@ def suggest_routine(products: list[Product], mood: str, weather: dict | None = N
     result = _safe_parse_json(text)
 
     return {
-        "mood": mood,
-        "mood_label": mood_def["label"],
+        "moods": moods,
+        "mood_label": mood_label,
         "steps": result.get("steps", []),
         "notes": result.get("notes", ""),
         "warnings": warnings,

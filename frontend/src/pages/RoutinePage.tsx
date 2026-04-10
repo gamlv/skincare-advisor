@@ -18,19 +18,19 @@ interface RoutinePageProps {
 }
 
 export function RoutinePage({ hasProducts, onGoToAdd }: RoutinePageProps) {
-  const [selectedMood, setSelectedMood] = useState<Mood | null>(null)
+  const [selectedMoods, setSelectedMoods] = useState<Mood[]>([])
   const { result, loading, error, suggest, reset } = useRoutine()
   const { weather, loading: weatherLoading, togglePollen } = useWeather()
 
   const handleSuggest = () => {
-    if (selectedMood) {
-      suggest(selectedMood, [], weather ?? undefined)
+    if (selectedMoods.length > 0) {
+      suggest(selectedMoods, [], weather ?? undefined)
     }
   }
 
   const handleReset = () => {
     reset()
-    setSelectedMood(null)
+    setSelectedMoods([])
   }
 
   // 製品未登録の場合
@@ -80,11 +80,11 @@ export function RoutinePage({ hasProducts, onGoToAdd }: RoutinePageProps) {
             <p className="text-xs text-gray-400">気分・天気に合わせた最適なルーティンをAIが提案します</p>
           </div>
 
-          <MoodSelector selected={selectedMood} onChange={setSelectedMood} />
+          <MoodSelector selected={selectedMoods} onChange={setSelectedMoods} />
 
           <Button
             onClick={handleSuggest}
-            disabled={!selectedMood}
+            disabled={selectedMoods.length === 0}
             fullWidth
           >
             ルーティンを提案してもらう

@@ -9,12 +9,12 @@ export function useRoutine() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const suggest = async (mood: Mood, productIds: string[] = [], weather?: WeatherCondition) => {
+  const suggest = async (moods: Mood[], productIds: string[] = [], weather?: WeatherCondition) => {
     setLoading(true)
     setError(null)
     setResult(null)
     try {
-      const data = await suggestRoutine(mood, productIds, weather ?? undefined)
+      const data = await suggestRoutine(moods, productIds, weather ?? undefined)
       setResult(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : "ルーティン提案に失敗しました")

@@ -107,7 +107,7 @@ export interface RoutineWarning {
 }
 
 export interface RoutineResponse {
-  mood: Mood;
+  moods: Mood[];
   mood_label: string;
   steps: RoutineStep[];
   notes: string;

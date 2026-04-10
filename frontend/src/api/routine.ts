@@ -3,14 +3,14 @@
 import { post } from "./client"
 import type { Mood, RoutineResponse, WeatherCondition } from "../types"
 
-// 気分・天気と対象製品IDでルーティンを提案する
+// 気分（複数可）・天気と対象製品IDでルーティンを提案する
 export const suggestRoutine = (
-  mood: Mood,
+  moods: Mood[],
   product_ids: string[] = [],
   weather?: WeatherCondition,
 ) =>
   post<RoutineResponse>("/routine/suggest", {
-    mood,
+    moods,
     product_ids,
     // バックエンドのフィールド名（snake_case）に変換して送る
     weather: weather

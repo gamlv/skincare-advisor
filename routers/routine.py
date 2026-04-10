@@ -23,7 +23,7 @@ class WeatherContext(BaseModel):
 
 
 class RoutineSuggestRequest(BaseModel):
-    mood: str                        # 気分モードのキー
+    moods: list[str]                 # 気分モードのキー（1〜3件）
     product_ids: list[str] = []      # 空の場合は全製品を対象にする
     weather: WeatherContext | None = None  # 天気コンテキスト（任意）
 
@@ -31,10 +31,16 @@ class RoutineSuggestRequest(BaseModel):
 @router.post("/suggest")
 def suggest_routine(request: RoutineSuggestRequest):
     """気分・天気に合わせたスキンケアルーティンを提案する"""
-    if request.mood not in _VALID_MOODS:
+    if not request.moods:
+        raise HTTPException(status_code=400, detail="気分モードを1つ以上選択してください")
+    if len(request.moods) > 3:
+        raise HTTPException(status_code=400, detail="気分モードは3つまで選択できます")
+
+    invalid = [m for m in request.moods if m not in _VALID_MOODS]
+    if invalid:
         raise HTTPException(
             status_code=400,
-            detail=f"無効な気分モードです。有効な値：{', '.join(sorted(_VALID_MOODS))}"
+            detail=f"無効な気分モードです：{', '.join(invalid)}"
         )
 
     # 対象製品を取得（指定がなければ全製品）
@@ -47,7 +53,7 @@ def suggest_routine(request: RoutineSuggestRequest):
         raise HTTPException(status_code=404, detail="製品が登録されていません")
 
     weather_dict = request.weather.model_dump() if request.weather else None
-    return routine_suggester.suggest_routine(products, request.mood, weather_dict)
+    return routine_suggester.suggest_routine(products, request.moods, weather_dict)
 
 
 def _get_specified_products(product_ids: list[str]):
