@@ -14,6 +14,18 @@ const MOODS: {
   description: string
 }[] = [
   {
+    mood: "morning",
+    icon: "🌅",
+    label: "朝ケア",
+    description: "日焼け止め必須・軽めで準備",
+  },
+  {
+    mood: "night",
+    icon: "🌙",
+    label: "夜ケア",
+    description: "美容液・クリーム重ね・高濃度OK",
+  },
+  {
     mood: "refresh",
     icon: "🌿",
     label: "リフレッシュ",
@@ -42,6 +54,24 @@ const MOODS: {
     icon: "🌸",
     label: "肌荒れ",
     description: "低刺激・優しいケア",
+  },
+  {
+    mood: "brightening",
+    icon: "✨",
+    label: "美白ケア",
+    description: "ビタミンC・ナイアシンアミド優先",
+  },
+  {
+    mood: "antiaging",
+    icon: "🕰️",
+    label: "エイジングケア",
+    description: "レチノール・ペプチド・ハリ重視",
+  },
+  {
+    mood: "pore",
+    icon: "🔬",
+    label: "毛穴ケア",
+    description: "BHA・皮脂コントロール重視",
   },
 ]
 

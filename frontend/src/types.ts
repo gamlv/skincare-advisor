@@ -18,7 +18,27 @@ export type SkinConcern =
   | "くすみ"
   | "ハリ不足";
 
-export type Mood = "refresh" | "relax" | "thorough" | "quick" | "sensitive";
+export type Mood =
+  | "refresh"
+  | "relax"
+  | "thorough"
+  | "quick"
+  | "sensitive"
+  | "morning"
+  | "night"
+  | "brightening"
+  | "antiaging"
+  | "pore";
+
+export interface WeatherCondition {
+  temperature: number;   // 気温（℃）
+  humidity: number;      // 湿度（%）
+  uvIndex: number;       // UV指数
+  weatherCode: number;   // Open-Meteo weather code
+  weatherLabel: string;  // 晴れ・曇り・雨 等
+  weatherIcon: string;   // 天気絵文字
+  pollen: boolean;       // 花粉注意（手動トグル）
+}
 
 export const PRODUCT_CATEGORIES: ProductCategory[] = [
   "洗顔",

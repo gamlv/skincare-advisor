@@ -2,12 +2,14 @@
 
 import { useState } from "react"
 import { MoodSelector } from "../components/routine/MoodSelector"
+import { WeatherBanner } from "../components/routine/WeatherBanner"
 import { RoutineResult } from "../components/routine/RoutineResult"
 import { LoadingSpinner } from "../components/ui/LoadingSpinner"
 import { ErrorMessage } from "../components/ui/ErrorMessage"
 import { EmptyState } from "../components/ui/EmptyState"
 import { Button } from "../components/ui/Button"
 import { useRoutine } from "../hooks/useRoutine"
+import { useWeather } from "../hooks/useWeather"
 import type { Mood } from "../types"
 
 interface RoutinePageProps {
@@ -18,10 +20,11 @@ interface RoutinePageProps {
 export function RoutinePage({ hasProducts, onGoToAdd }: RoutinePageProps) {
   const [selectedMood, setSelectedMood] = useState<Mood | null>(null)
   const { result, loading, error, suggest, reset } = useRoutine()
+  const { weather, loading: weatherLoading, togglePollen } = useWeather()
 
   const handleSuggest = () => {
     if (selectedMood) {
-      suggest(selectedMood)
+      suggest(selectedMood, [], weather ?? undefined)
     }
   }
 
@@ -66,9 +69,15 @@ export function RoutinePage({ hasProducts, onGoToAdd }: RoutinePageProps) {
       {/* 気分選択UI（結果が出るまで表示） */}
       {!result && !loading && (
         <div className="flex flex-col gap-5">
+          <WeatherBanner
+            weather={weather}
+            loading={weatherLoading}
+            onTogglePollen={togglePollen}
+          />
+
           <div>
             <p className="mb-1 text-sm font-medium text-gray-700">今日の気分は？</p>
-            <p className="text-xs text-gray-400">気分に合わせた最適なルーティンをAIが提案します</p>
+            <p className="text-xs text-gray-400">気分・天気に合わせた最適なルーティンをAIが提案します</p>
           </div>
 
           <MoodSelector selected={selectedMood} onChange={setSelectedMood} />

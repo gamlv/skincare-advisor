@@ -2,19 +2,19 @@
 
 import { useState } from "react"
 import { suggestRoutine } from "../api/routine"
-import type { Mood, RoutineResponse } from "../types"
+import type { Mood, RoutineResponse, WeatherCondition } from "../types"
 
 export function useRoutine() {
   const [result, setResult] = useState<RoutineResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const suggest = async (mood: Mood, productIds: string[] = []) => {
+  const suggest = async (mood: Mood, productIds: string[] = [], weather?: WeatherCondition) => {
     setLoading(true)
     setError(null)
     setResult(null)
     try {
-      const data = await suggestRoutine(mood, productIds)
+      const data = await suggestRoutine(mood, productIds, weather ?? undefined)
       setResult(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : "ルーティン提案に失敗しました")

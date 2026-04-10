@@ -1,4 +1,10 @@
-"""DuckDuckGo多角検索 + ページ本文取得 + Claude Haiku 要約による製品情報抽出"""
+"""DuckDuckGo多角検索 + ページ本文取得（Qoo10はPlaywright）+ Claude 要約による製品情報抽出
+
+モデルの使い分け:
+- 候補検索（軽量）     : claude-haiku-4-5-20251001
+- バーコード詳細検索   : claude-haiku-4-5-20251001（DDG失敗時はClaude web_search）
+- 製品名詳細検索       : claude-sonnet-4-6（精度優先）
+"""
 
 import json
 import os
@@ -10,14 +16,18 @@ import anthropic
 import httpx
 from ddgs import DDGS
 from fastapi import HTTPException
+from playwright.sync_api import sync_playwright
 
 logger = logging.getLogger(__name__)
+
+_HAIKU = "claude-haiku-4-5-20251001"
+_SONNET = "claude-sonnet-4-6"
 
 # ページ取得の設定
 _FETCH_TIMEOUT = 8  # 秒
 _MAX_PAGES = 5  # 本文を取得するページ数の上限
 _MAX_PAGE_CHARS = 8000  # 1ページあたりの本文上限
-_MAX_TOTAL_CHARS = 30000  # Haiku に渡すテキストの合計上限
+_MAX_TOTAL_CHARS = 30000  # Claude に渡すテキストの合計上限
 
 _NOT_FOUND = {
     "found": False, "name": "", "brand": "",
@@ -31,7 +41,6 @@ def search_candidates(query: str) -> list[dict]:
     if not urls_and_snippets:
         return []
 
-    # スニペットだけをまとめる（ページ本文は取得しない＝高速）
     snippet_text = "\n\n".join(
         f"【{item['title']}】\n{item['snippet']}" for item in urls_and_snippets
     )
@@ -39,21 +48,24 @@ def search_candidates(query: str) -> list[dict]:
 
 
 def search_product_info(query: str) -> dict:
-    """特定の製品名で詳細検索。ページ本文まで取得して成分を抽出する。"""
+    """特定の製品名で詳細検索。ページ本文まで取得してSonnetで成分を抽出する。
+    Qoo10を優先的に検索し、取れなければ他のソースにフォールバックする。"""
     queries = [
+        f"{query} site:qoo10.jp 全成分",   # Qoo10優先（Playwrightで取得）
+        f"{query} site:qoo10.jp",
         f"{query} 全成分",
         f"{query} @cosme 成分",
-        f"{query} site:qoo10.jp",
         f"{query} 口コミ 特徴",
         f"{query} ingredients",
         f"{query} スキンケア レビュー",
     ]
-    return _run_search(query, queries)
+    return _run_search(query, queries, model=_SONNET)
 
 
 def search_product_by_barcode(barcode: str) -> dict:
     """バーコード（JANコード・GTINなど）からWeb検索で製品情報を取得する。
-    Open Beauty Factsにない日本・海外製品もカバーする。"""
+    1. DuckDuckGo検索を試みる（Haiku抽出）
+    2. 見つからなければClaude Haiku + web_searchにフォールバック"""
     queries = [
         f"{barcode} スキンケア 全成分",
         f"{barcode} 化粧品 成分表",
@@ -62,11 +74,18 @@ def search_product_by_barcode(barcode: str) -> dict:
         f"{barcode} site:qoo10.jp",
         f"{barcode} @cosme",
     ]
-    return _run_search(f"バーコード {barcode} の製品", queries)
+    result = _run_search(f"バーコード {barcode} の製品", queries, model=_HAIKU)
+
+    if result.get("found"):
+        return result
+
+    # DDGで見つからなければClaude Haiku web_searchで再試行
+    logger.info("DDG検索失敗、Claude Haiku web_searchにフォールバック: %s", barcode)
+    return _search_barcode_with_claude_haiku(barcode)
 
 
-def _run_search(label: str, queries: list[str]) -> dict:
-    """DuckDuckGo検索 → ページ取得 → Haikuで抽出する共通処理。"""
+def _run_search(label: str, queries: list[str], model: str = _HAIKU) -> dict:
+    """DuckDuckGo検索 → ページ取得 → Claudeで抽出する共通処理。"""
     urls_and_snippets = _ddg_search(queries)
     if not urls_and_snippets:
         return {**_NOT_FOUND}
@@ -76,7 +95,7 @@ def _run_search(label: str, queries: list[str]) -> dict:
     if not combined.strip():
         return {**_NOT_FOUND}
 
-    return _extract_with_haiku(label, combined)
+    return _extract_with_claude(label, combined, model)
 
 
 # ── Step1: 多角的な検索 ──
@@ -95,7 +114,6 @@ def _ddg_multi_search(query: str) -> list[dict]:
 
 def _ddg_search(search_queries: list[str]) -> list[dict]:
     """複数の検索クエリで DuckDuckGo を叩き、URL・タイトル・スニペットを集める。"""
-
     seen_urls: set[str] = set()
     results: list[dict] = []
 
@@ -127,11 +145,16 @@ def _ddg_search(search_queries: list[str]) -> list[dict]:
 # ── Step2: ページ本文の取得 ──
 
 def _fetch_pages(items: list[dict]) -> dict[str, str]:
-    """上位ページのHTMLを取得してテキストを抽出する。並列処理で高速化。"""
+    """上位ページのHTMLを取得してテキストを抽出する。
+    qoo10.jpはPlaywright（JS実行）、それ以外はhttpxで取得する。"""
     targets = items[:_MAX_PAGES]
     page_texts: dict[str, str] = {}
 
-    def fetch_one(url: str) -> tuple[str, str]:
+    qoo10_targets = [item for item in targets if "qoo10.jp" in item["url"]]
+    other_targets = [item for item in targets if "qoo10.jp" not in item["url"]]
+
+    # Qoo10以外はhttpxで並列取得
+    def fetch_one_httpx(url: str) -> tuple[str, str]:
         try:
             resp = httpx.get(
                 url,
@@ -145,23 +168,57 @@ def _fetch_pages(items: list[dict]) -> dict[str, str]:
         except Exception:
             return url, ""
 
-    with ThreadPoolExecutor(max_workers=_MAX_PAGES) as pool:
-        futures = {pool.submit(fetch_one, item["url"]): item["url"] for item in targets}
+    with ThreadPoolExecutor(max_workers=max(len(other_targets), 1)) as pool:
+        futures = {pool.submit(fetch_one_httpx, item["url"]): item["url"] for item in other_targets}
         for future in as_completed(futures):
             url, text = future.result()
             if text:
                 page_texts[url] = text
 
+    # Qoo10はPlaywrightでまとめて取得（ブラウザインスタンスを使い回す）
+    if qoo10_targets:
+        qoo10_texts = _fetch_qoo10_with_playwright([item["url"] for item in qoo10_targets])
+        page_texts.update(qoo10_texts)
+
     return page_texts
+
+
+def _fetch_qoo10_with_playwright(urls: list[str]) -> dict[str, str]:
+    """PlaywrightでQoo10のページ本文を取得する。JSを実行して全成分を取得する。"""
+    results: dict[str, str] = {}
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            for url in urls:
+                try:
+                    page = browser.new_page()
+                    page.set_extra_http_headers({
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Accept-Language": "ja-JP,ja;q=0.9",
+                    })
+                    page.goto(url, timeout=15000, wait_until="domcontentloaded")
+                    # 遅延レンダリングを待つ
+                    page.wait_for_timeout(2000)
+                    html = page.content()
+                    page.close()
+                    text = _extract_text_from_html(html)
+                    if text:
+                        results[url] = text[:_MAX_PAGE_CHARS]
+                        logger.info("Playwright取得成功 %s: %d文字", url, len(text))
+                    else:
+                        logger.warning("Playwright取得結果が空 %s", url)
+                except Exception as e:
+                    logger.warning("Playwright取得失敗 %s: %s", url, e)
+            browser.close()
+    except Exception as e:
+        logger.warning("Playwright起動失敗: %s", e)
+    return results
 
 
 def _extract_text_from_html(html: str) -> str:
     """HTMLからスクリプト・スタイル・タグを除去してテキストを抽出する。"""
-    # script, style タグごと除去
     html = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
-    # HTMLタグを除去
     text = re.sub(r"<[^>]+>", " ", html)
-    # 連続する空白を整理
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
@@ -180,13 +237,11 @@ def _build_context(items: list[dict], page_texts: dict[str, str]) -> str:
 
         section = f"【{title}】\nURL: {url}\nスニペット: {snippet}"
 
-        # ページ本文があれば追加
         page_text = page_texts.get(url, "")
         if page_text:
             section += f"\n本文:\n{page_text}"
 
         if total + len(section) > _MAX_TOTAL_CHARS:
-            # 残り容量分だけ追加
             remaining = _MAX_TOTAL_CHARS - total
             if remaining > 200:
                 parts.append(section[:remaining])
@@ -232,7 +287,7 @@ def _extract_candidates_with_haiku(query: str, snippet_text: str) -> list[dict]:
 
     try:
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=_HAIKU,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -247,7 +302,6 @@ def _extract_candidates_with_haiku(query: str, snippet_text: str) -> list[dict]:
 
 def _parse_json_array(text: str) -> list[dict]:
     """レスポンスからJSON配列を取り出す。"""
-    # コードブロック除去
     if "```" in text:
         parts = text.split("```")
         if len(parts) >= 2:
@@ -256,7 +310,6 @@ def _parse_json_array(text: str) -> list[dict]:
                 text = text[4:]
 
     text = text.strip()
-    # [ ... ] の範囲だけ抜き出してパース
     start = text.find("[")
     end = text.rfind("]") + 1
     if start != -1 and end > start:
@@ -269,10 +322,10 @@ def _parse_json_array(text: str) -> list[dict]:
     return []
 
 
-# ── Haiku で構造化抽出（詳細） ──
+# ── Claude で構造化抽出（DDG収集テキストから） ──
 
-def _extract_with_haiku(query: str, context: str) -> dict:
-    """収集した情報を Haiku に渡して製品情報を JSON で抽出する。"""
+def _extract_with_claude(query: str, context: str, model: str) -> dict:
+    """収集した情報を指定モデルに渡して製品情報をJSONで抽出する。"""
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
     prompt = f"""\
@@ -304,7 +357,7 @@ def _extract_with_haiku(query: str, context: str) -> dict:
 
     try:
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -317,9 +370,59 @@ def _extract_with_haiku(query: str, context: str) -> dict:
     return _parse_json(text)
 
 
+# ── Claude Haiku web_search でバーコード検索（DDGフォールバック） ──
+
+def _search_barcode_with_claude_haiku(barcode: str) -> dict:
+    """Claude Haiku の web_search ツールでJANコードから製品情報を取得する。
+    DuckDuckGo検索で見つからなかった場合のフォールバック。"""
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+    prompt = f"""\
+JANコード {barcode} のスキンケア製品を検索してください。
+製品名・ブランド・全成分リストを取得してください。
+Qoo10・Amazon・@cosme・美容サイト等も検索対象にしてください。
+日本語・韓国語両方で検索してください。
+
+以下のJSON形式のみで返してください（説明文不要）:
+{{
+  "found": true,
+  "name": "正式な製品名",
+  "brand": "ブランド名",
+  "category": "洗顔 | 化粧水 | 美容液 | 乳液 | クリーム | 日焼け止め | その他",
+  "ingredients": ["成分1", "成分2", ...],
+  "concerns": ["乾燥", "ニキビ", "毛穴", "シミ", "敏感肌", "くすみ", "ハリ不足" から該当するもの]
+}}
+
+製品が見つからない場合: {{"found": false}}
+成分が不明な場合は ingredients を [] にして found: true を返してください。"""
+
+    try:
+        response = client.messages.create(
+            model=_HAIKU,
+            max_tokens=2048,
+            tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}],
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.AuthenticationError:
+        raise HTTPException(status_code=503, detail="APIキーが無効です")
+    except anthropic.RateLimitError:
+        raise HTTPException(status_code=429, detail="APIのレート制限に達しました。しばらく待ってから再試行してください")
+    except Exception as e:
+        logger.warning("Claude web_search失敗: %s", e)
+        return {**_NOT_FOUND}
+
+    # 全テキストブロックを走査してJSONを探す（Claudeは複数のtextブロックを返すことがある）
+    for block in response.content:
+        if hasattr(block, "type") and block.type == "text":
+            result = _parse_json(block.text)
+            if result.get("found") is not None:
+                return result
+
+    return {**_NOT_FOUND}
+
+
 def _parse_json(text: str) -> dict:
     """レスポンスからJSONを取り出す。コードブロックも考慮。"""
-    # コードブロック除去
     if "```" in text:
         parts = text.split("```")
         if len(parts) >= 2:
@@ -328,7 +431,6 @@ def _parse_json(text: str) -> dict:
                 text = text[4:]
 
     text = text.strip()
-    # { ... } の範囲だけ抜き出してパース
     start = text.find("{")
     end = text.rfind("}") + 1
     if start != -1 and end > start:

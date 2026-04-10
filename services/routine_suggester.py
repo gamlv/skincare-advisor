@@ -11,11 +11,16 @@ from services.ingredient_checker import check_routine_compatibility
 
 # 気分モードの定義（APIキー → 日本語ラベル・提案方針）
 _MOOD_DEFINITIONS = {
-    "refresh":  {"label": "リフレッシュ",  "policy": "爽やかさ重視。さっぱり系・軽いテクスチャの製品を優先し、重ねづけは最小限にする。"},
-    "relax":    {"label": "リラックス",    "policy": "保湿重視。じっくりケアし、肌にうるおいを与える製品を多めに使う。"},
-    "thorough": {"label": "しっかりケア",  "policy": "フル工程。使用可能な全製品をカテゴリ順に使い、肌に最大限の栄養を与える。"},
-    "quick":    {"label": "時短",          "policy": "最小手順。クレンジング・保湿・日焼け止めなど必須ケアのみに絞る。"},
-    "sensitive": {"label": "肌荒れ",       "policy": "低刺激優先。AHA/BHA・レチノール・ビタミンCなど刺激になりやすい成分を含む製品は除外する。"},
+    "refresh":    {"label": "リフレッシュ",    "policy": "爽やかさ重視。さっぱり系・軽いテクスチャの製品を優先し、重ねづけは最小限にする。"},
+    "relax":      {"label": "リラックス",      "policy": "保湿重視。じっくりケアし、肌にうるおいを与える製品を多めに使う。"},
+    "thorough":   {"label": "しっかりケア",    "policy": "フル工程。使用可能な全製品をカテゴリ順に使い、肌に最大限の栄養を与える。"},
+    "quick":      {"label": "時短",            "policy": "最小手順。クレンジング・保湿・日焼け止めなど必須ケアのみに絞る。"},
+    "sensitive":  {"label": "肌荒れ",          "policy": "低刺激優先。AHA/BHA・レチノール・ビタミンCなど刺激になりやすい成分を含む製品は除外する。"},
+    "morning":    {"label": "朝ケア",          "policy": "朝の準備に最適化。日焼け止めを必須とし、レチノールは除外する。軽いテクスチャで化粧下地としても機能する製品を優先する。"},
+    "night":      {"label": "夜ケア",          "policy": "夜の肌再生に最適化。日焼け止めは不要。美容液・クリームを厚めに重ね、レチノールや高濃度成分も積極的に活用する。"},
+    "brightening":{"label": "美白ケア",        "policy": "くすみ・シミ対策重視。ビタミンC・ナイアシンアミド・トラネキサム酸を含む製品を優先的に選ぶ。"},
+    "antiaging":  {"label": "エイジングケア",  "policy": "ハリ・弾力ケア重視。レチノール・ペプチド・コラーゲン・セラミドを含む製品を優先し、保湿もしっかり行う。"},
+    "pore":       {"label": "毛穴ケア",        "policy": "皮脂コントロール・毛穴引き締め重視。BHA（サリチル酸）・ナイアシンアミド・クレイ系製品を優先し、重ためのオイル系は除外する。"},
 }
 
 _SYSTEM_PROMPT = """\
@@ -38,12 +43,14 @@ JSONのみを返し、説明文やコードブロックは不要です。
 """
 
 
-def suggest_routine(products: list[Product], mood: str) -> dict:
-    """気分に合わせて製品リストからルーティンを提案する。
+def suggest_routine(products: list[Product], mood: str, weather: dict | None = None) -> dict:
+    """気分・天気に合わせて製品リストからルーティンを提案する。
 
     Args:
         products: 対象の製品リスト
-        mood: 気分モードのキー（refresh / relax / thorough / quick / sensitive）
+        mood: 気分モードのキー（refresh / relax / thorough / quick / sensitive /
+              morning / night / brightening / antiaging / pore）
+        weather: 天気コンテキスト（temperature, humidity, uv_index, weather_label, pollen）
 
     Returns:
         {
@@ -65,9 +72,13 @@ def suggest_routine(products: list[Product], mood: str) -> dict:
     # NGペアがある場合は除外指示を追加
     ng_note = _format_ng_warnings_for_prompt(warnings) if warnings else "成分的な問題はありません。"
 
+    # 天気情報を追加（取得できている場合のみ）
+    weather_note = f"\n\n{_format_weather_for_prompt(weather)}" if weather else ""
+
     user_message = (
         f"今日の気分：{mood_def['label']}\n"
-        f"提案方針：{mood_def['policy']}\n\n"
+        f"提案方針：{mood_def['policy']}"
+        f"{weather_note}\n\n"
         f"【登録製品】\n{product_list_text}\n\n"
         f"【成分チェック結果】\n{ng_note}"
     )
@@ -117,6 +128,35 @@ def _format_ng_warnings_for_prompt(warnings: list[dict]) -> str:
     for w in warnings:
         pairs = "、".join(f"{a}×{b}" for a, b in w["ng_pairs"])
         lines.append(f"- 「{w['product_a']}」と「{w['product_b']}」（{pairs}）")
+    return "\n".join(lines)
+
+
+def _format_weather_for_prompt(weather: dict) -> str:
+    """天気・環境情報をClaudeへ渡すテキスト形式に変換する。"""
+    uv = weather.get("uv_index", 0)
+    if uv <= 2:
+        uv_label = "低い"
+    elif uv <= 5:
+        uv_label = "中程度"
+    elif uv <= 7:
+        uv_label = "高い（日焼け止め推奨）"
+    else:
+        uv_label = "非常に高い（日焼け止め必須）"
+
+    humidity = weather.get("humidity", 50)
+    humidity_note = "（乾燥注意・保湿強化推奨）" if humidity < 40 else ""
+
+    lines = [
+        "【今日の環境】",
+        f"- 気温：{weather.get('temperature', '不明')}℃",
+        f"- 湿度：{humidity}%{humidity_note}",
+        f"- UV指数：{uv}（{uv_label}）",
+        f"- 天気：{weather.get('weather_label', '不明')}",
+    ]
+    if weather.get("pollen"):
+        lines.append("- 花粉：注意レベル（肌バリア強化・低刺激製品を優先すること）")
+
+    lines.append("※ 上記の環境条件も考慮して、最適な製品の組み合わせと使い方を提案してください。")
     return "\n".join(lines)
 
 
